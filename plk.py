@@ -1,39 +1,39 @@
 #!/usr/bin/env python
-# coding: utf8
+# coding: utf-8
 
 import sys
 import curses
+import traceback
 
 
-class Content:
+class ContentView:
     def __init__(self, lines, tabsize=4):
         self.tabsize = tabsize
         tabstr = b' ' * self.tabsize
         self.lines = [L.replace(b'\t', tabstr) for L in lines]
-        self.line_index = 0  # position of cursor in text (goes 0 to len(line))
+        self.cursor = 0  # position of cursor in text (goes 0 to len(line))
 
-    def _clip_line_index(self):
-        if self.line_index < 0:
-            self.line_index = 0
-        elif self.line_index > len(self.lines) -1:
-            self.line_index = len(self.lines) - 1
+    def _get_clipped_index(self, index):
+        if index < 0:
+            return 0
+        elif index > len(self.lines) - 1:
+            return len(self.lines) - 1
+        return index
 
-    def get_index(self):
-        return self.line_index
+    def get_cursor(self):
+        return self.cursor
 
     def get_size(self):
         return len(self.lines)
 
-    def set_index(self, index):
-        self.line_index = index
-        self._clip_line_index()
+    def set_cursor(self, index):
+        self.cursor = self._get_clipped_index(index)
 
-    def move_index(self, delta):
-        self.line_index += delta
-        self._clip_line_index()
+    def move_cursor(self, delta):
+        self.cursor = self._get_clipped_index(self.cursor + delta)
     
     def get_line(self, y):
-        li = self.line_index + y
+        li = self.cursor + y
         if 0 <= li and li < len(self.lines):
             return self.lines[li]
         else:
@@ -60,7 +60,7 @@ class Pager:
         self.y = 0
         self.x = 0
 
-        self.content.set_index(self.y)
+        self.content.set_cursor(self.y)
         
         self.pad_width = self.width * 2
         self.pad = curses.newpad(self.height, self.pad_width)
@@ -71,6 +71,9 @@ class Pager:
             win.move(self.y, self.x)
 
             ch = win.getch()
+            if ch == -1:
+                continue  # no input
+
             if ch == ord(b'q'):
                 break
             elif ch in (ord(b'r'), curses.KEY_REFRESH):
@@ -91,7 +94,7 @@ class Pager:
                 self.debug_log.append('ch=%d' % ch)
     
     def move_y(self, delta):
-        self.content.move_index(delta)
+        self.content.move_cursor(delta)
         self.y += delta
         if self.y > self.height - 2:
             self.y = self.height - 2
@@ -118,7 +121,7 @@ class Pager:
             pad.clrtoeol()
         pad.move(self.height - 1, 0)
         pad.addstr(self.height - 1, 0, b'[%d / %d]' %
-                (self.content.get_index() + 1, self.content.get_size()), curses.A_REVERSE)
+                   (self.content.get_cursor() + 1, self.content.get_size()), curses.A_REVERSE)
         pad.clrtoeol()
 
 
@@ -148,12 +151,13 @@ Usage: {argv0} <input>
     with open(input_file, 'rb') as inp:
         lines = inp.readlines()
 
-    cnt = Content(lines)
+    cnt = ContentView(lines)
     pgr = Pager(cnt)
     try:
         curses.wrapper(pgr.curses_main)
-    except BaseException as e:
-        sys.stderr.write('exception: %s\n' % repr(e))
+    except:
+        sys.stderr.write(traceback.format_exc())
+    finally:
         if pgr.debug_log:
             sys.stderr.write('debug log: %s\n' % repr(pgr.debug_log))
 
