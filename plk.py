@@ -17,8 +17,8 @@ class ContentView:
         self.lines = [L.replace(b'\t', tabstr) for L in lines]
         self.cursor = 0  # position of cursor in text (goes 0 to len(line))
 
-    def _get_clipped_index(self, index):
-        return min(max(0, index), len(self.lines) - 1)
+    def _clip_set_cursor(self, index):
+        self.cursor = min(max(0, index), len(self.lines) - 1)
 
     def get_cursor(self):
         return self.cursor
@@ -27,10 +27,10 @@ class ContentView:
         return len(self.lines)
 
     def set_cursor(self, index):
-        self.cursor = self._get_clipped_index(index)
+        self._clip_set_cursor(index)
 
     def move_cursor(self, delta):
-        self.cursor = self._get_clipped_index(self.cursor + delta)
+        self._clip_set_cursor(self.cursor + delta)
     
     def get_line(self, offset=0):
         li = self.cursor + offset
@@ -65,7 +65,7 @@ class Pager:
         kh[ord(b'q')] = lambda: 'quit'
 
     def curses_main(self, stdscr):
-        stdscr.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
+        stdscr.scrollok(False)  # take control of scroll
         stdscr.move(0, 0)
 
         pad = self.prepare_for_screen(stdscr)
@@ -93,7 +93,7 @@ class Pager:
         cs = self.content.get_size()
         cc = self.content.get_cursor()
         y = min(y, cs - 1)
-        margin = min(self.margin_height, cc, max(cs - 1 - cc, 0))
+        margin = max(0, min(self.margin_height, cc, cs - 1 - cc))
         y = min(y, self.body_height - margin - 1)
         y = max(y, margin)
         self.y = y
@@ -121,7 +121,7 @@ class Pager:
         pad.erase()
 
         pad_width = pad.getmaxyx()[1]
-        for y in range(0, self.body_height):
+        for y in range(self.body_height):
             l = self.content.get_line(y - self.y)
             pad.addnstr(y, 0, l, pad_width)
             pad.clrtoeol()
@@ -132,7 +132,7 @@ class Pager:
         pad.clrtoeol()
 
 
-def wrapper(curses_main):
+def wrapper(curses_main):  # same as curses.wrapper, except for not setting up color pallet
     stdscr = curses.initscr()
     try:
         curses.noecho()
