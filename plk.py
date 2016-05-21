@@ -93,13 +93,13 @@ class Pager:
         elif ch in (self.ord_y, self.ord_k, curses.KEY_UP):
             self.move_y(-1)
         elif ch == self.ord_d:
-            self.move_y(self.height // 2)
+            self.move_y(self.body_height // 2)
         elif ch == self.ord_u:
-            self.move_y(-(self.height // 2))
+            self.move_y(-(self.body_height // 2))
         elif ch == self.ord_f:
-            self.move_y(self.height)
+            self.move_y(self.body_height)
         elif ch == self.ord_b:
-            self.move_y(-self.height)
+            self.move_y(-self.body_height)
         elif ch == self.ord_g:
             self.set_y(0)
         elif ch == self.ord_G:
@@ -111,16 +111,13 @@ class Pager:
         return None
     
     def _clip_set_y(self, y):
-        self.y = y
         cs = self.content.get_size()
         cc = self.content.get_cursor()
-        if self.y >= cs - 1:
-            self.y = cs - 1
+        y = min(y, cs - 1)
         margin = min(self.margin_height, cc, max(cs - 1 - cc, 0))
-        if self.y > self.body_height - margin - 1:
-            self.y = self.body_height - margin - 1
-        if self.y < margin:
-            self.y = margin
+        y = min(y, self.body_height - margin - 1)
+        y = max(y, margin)
+        self.y = y
 
     def move_y(self, delta):
         self.content.move_cursor(delta)
@@ -132,6 +129,7 @@ class Pager:
 
     def update_for_screen(self, scr):
         self.height, self.width = scr.getmaxyx()
+        self.height = max(0, self.height)
         self.margin_height = self.height // 5
         self.body_height = self.height - self.footer_height
 
