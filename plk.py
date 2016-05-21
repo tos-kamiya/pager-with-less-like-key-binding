@@ -130,7 +130,6 @@ class Pager:
             l = self.content.get_line(y - self.y)
             pad.addnstr(y, 0, l, pad_width)
             pad.clrtoeol()
-        pad.move(self.height - self.status_height, 0)
         pad.addstr(self.height - self.status_height, 0, b'[%d / %d]' %
                    (self.content.get_cursor() + 1, self.content.get_size()), curses.A_REVERSE)
         pad.clrtoeol()
