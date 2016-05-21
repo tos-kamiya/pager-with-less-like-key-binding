@@ -129,9 +129,8 @@ class Pager:
 
     def update_for_screen(self, scr):
         self.height, self.width = scr.getmaxyx()
-        self.height = max(0, self.height)
-        self.margin_height = self.height // 5
-        self.body_height = self.height - self.footer_height
+        self.body_height = max(0, self.height - self.footer_height)
+        self.margin_height = self.body_height // 5
 
         y, self.x = curses.getsyx()
         self._clip_set_y(y)
