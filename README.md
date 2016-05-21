@@ -3,4 +3,4 @@
 A pager with less-like key binding, implemented in Python.
 (This product is just a study, practice.)
 
-License: Public Doamin.
+License: Public Domain.
