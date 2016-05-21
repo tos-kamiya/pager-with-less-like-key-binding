@@ -63,7 +63,7 @@ class Pager:
         self.height, self.width = win.getmaxyx()
         self.margin_height = self.height // 4
 
-        self.y = self.margin_height
+        self.y = 0
         self.x = 0
 
         self.content.set_cursor(self.y)
@@ -80,35 +80,53 @@ class Pager:
             while ch == -1:
                 time.sleep(0.005)
                 ch = win.getch()
-
             if ch == ord(b'q'):
                 break
-            elif ch in (ord(b'r'), curses.KEY_REFRESH, curses.KEY_RESIZE):
-                self.refresh()
-            elif ch in (ord(b'e'), ord(b'j'), curses.KEY_DOWN):
-                self.move_y(+1)
-            elif ch in (ord(b'y'), ord(b'k'), curses.KEY_UP):
-                self.move_y(-1)
-            elif ch == ord(b'd'):
-                self.move_y(self.height // 2)
-            elif ch == ord(b'u'):
-                self.move_y(-(self.height // 2))
-            elif ch == ord(b'f'):
-                self.move_y(self.height)
-            elif ch == ord(b'b'):
-                self.move_y(-self.height)
-            else:
-                self.debug_log.append('ch=%d' % ch)
+
+            self.dispatch(ch)
+
+    def dispatch(self, ch):
+        if ch in (ord(b'r'), curses.KEY_REFRESH, curses.KEY_RESIZE):
+            self.refresh()
+        elif ch in (ord(b'e'), ord(b'j'), curses.KEY_DOWN):
+            self.move_y(+1)
+        elif ch in (ord(b'y'), ord(b'k'), curses.KEY_UP):
+            self.move_y(-1)
+        elif ch == ord(b'd'):
+            self.move_y(self.height // 2)
+        elif ch == ord(b'u'):
+            self.move_y(-(self.height // 2))
+        elif ch == ord(b'f'):
+            self.move_y(self.height)
+        elif ch == ord(b'b'):
+            self.move_y(-self.height)
+        elif ch == ord(b'g'):
+            self.set_y(0)
+        elif ch == ord(b'G'):
+            self.set_y(self.content.get_size())
+        else:
+            self.debug_log.append('ch=%d' % ch)
     
-    def move_y(self, delta):
+    def _clip_y(self):
         c = self.content
-        c.move_cursor(delta)
         margin = min(self.margin_height, c.get_cursor(), c.get_size() - 1 - c.get_cursor())
-        self.y += delta
         if self.y > self.height - self.status_height - margin - 1:
             self.y = self.height - self.status_height - margin - 1
         if self.y < margin:
             self.y = margin
+
+    def move_y(self, delta):
+        c = self.content
+        c.move_cursor(delta)
+        self.y += delta
+        self._clip_y()
+    
+    def set_y(self, y):
+        c = self.content
+        c.set_cursor(y)
+        margin = min(self.margin_height, c.get_cursor(), c.get_size() - 1 - c.get_cursor())
+        self.y = y
+        self._clip_y()
 
     def refresh(self):
         self.height, self.width = self.win.getmaxyx()
