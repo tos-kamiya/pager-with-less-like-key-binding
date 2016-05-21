@@ -43,6 +43,7 @@ class ContentView:
 
 class Pager:
     def __init__(self, content):
+        self.win = None
         self.y = 0  # position of cursor in screen
         self.x = 0  # position of cursor in screen
         self.height = None
@@ -53,7 +54,7 @@ class Pager:
         self.content = content
     
     def curses_main(self, stdscr):
-        win = stdscr
+        self.win = win = stdscr
         win.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
         win.nodelay(True)  # capture arrow keys
 
@@ -70,15 +71,15 @@ class Pager:
             self.render()
             self.pad.overwrite(win)
             win.move(self.y, self.x)
-            time.sleep(0.005)
 
-            ch = win.getch()
-            if ch == -1:
-                continue  # no input
+            ch = -1
+            while ch == -1:
+                time.sleep(0.005)
+                ch = win.getch()
 
             if ch == ord(b'q'):
                 break
-            elif ch in (ord(b'r'), curses.KEY_REFRESH):
+            elif ch in (ord(b'r'), curses.KEY_REFRESH, curses.KEY_RESIZE):
                 self.refresh()
             elif ch in (ord(b'e'), ord(b'j'), curses.KEY_DOWN):
                 self.move_y(+1)
@@ -104,7 +105,7 @@ class Pager:
             self.y = 0
 
     def refresh(self):
-        self.height, self.width = win.getmaxyx()
+        self.height, self.width = self.win.getmaxyx()
         y, x = curses.getsyx()
         assert y >= 0
         self.y = y
