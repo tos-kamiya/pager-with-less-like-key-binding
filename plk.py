@@ -3,6 +3,7 @@
 
 import sys
 import time
+import string
 import traceback
 import curses
 
@@ -15,11 +16,7 @@ class ContentView:
         self.cursor = 0  # position of cursor in text (goes 0 to len(line))
 
     def _get_clipped_index(self, index):
-        if index < 0:
-            return 0
-        elif index > len(self.lines) - 1:
-            return len(self.lines) - 1
-        return index
+        return min(max(0, index), len(self.lines) - 1)
 
     def get_cursor(self):
         return self.cursor
@@ -43,111 +40,115 @@ class ContentView:
 
 class Pager:
     def __init__(self, content):
-        self.win = None
+        self.content = content
+        self.height = None  # screen size
+        self.width = None  # screen size
+        self.body_height = None  # body_height + footer_height = height
+        self.footer_height = 1
+        self.margin_height = None  # margin_height < body_height
         self.y = 0  # position of cursor in screen
         self.x = 0  # position of cursor in screen
-        self.height = None
-        self.width = None
-        self.margin_height = None
-        self.status_height = 1
-        self.pad_width = None
-        self.pad = None
         self.debug_log = []  # for debug
-        self.content = content
+
+        for c in string.ascii_lowercase:
+            setattr(Pager, 'ord_' + c, ord(c))
+        for c in string.ascii_uppercase:
+            setattr(Pager, 'ord_' + c, ord(c))
 
     def curses_main(self, stdscr):
-        self.win = win = stdscr
-        win.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
-        win.nodelay(True)  # capture arrow keys
+        stdscr.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
+        stdscr.nodelay(True)  # capture arrow keys
+        stdscr.move(0, 0)
 
-        self.height, self.width = win.getmaxyx()
-        self.margin_height = self.height // 4
-
-        self.y = 0
-        self.x = 0
-
+        pad = self.update_for_screen(stdscr)
         self.content.set_cursor(self.y)
         
-        self.pad_width = self.width * 2
-        self.pad = curses.newpad(self.height, self.pad_width)
-
         while True:
-            self.render()
-            self.pad.overwrite(win)
-            win.move(self.y, self.x)
+            self.render(pad)
+            pad.overwrite(stdscr)
+            stdscr.move(self.y, self.x)
 
             ch = -1
             while ch == -1:
                 time.sleep(0.005)
-                ch = win.getch()
-            if ch == ord(b'q'):
-                break
+                ch = stdscr.getch()
 
-            self.dispatch(ch)
+            ch = self.dispatch(ch)
+            if ch is None:
+                pass
+            elif ch == self.ord_q:
+                break  # while True
+            elif ch == self.ord_r:
+                pad = self.update_for_screen(stdscr)
+            else:
+                self.debug_log.append('ch=%d' % ch)
 
     def dispatch(self, ch):
-        if ch in (ord(b'r'), curses.KEY_REFRESH, curses.KEY_RESIZE):
-            self.refresh()
-        elif ch in (ord(b'e'), ord(b'j'), curses.KEY_DOWN):
+        if ch in (self.ord_e, self.ord_j, curses.KEY_DOWN):
             self.move_y(+1)
-        elif ch in (ord(b'y'), ord(b'k'), curses.KEY_UP):
+        elif ch in (self.ord_y, self.ord_k, curses.KEY_UP):
             self.move_y(-1)
-        elif ch == ord(b'd'):
+        elif ch == self.ord_d:
             self.move_y(self.height // 2)
-        elif ch == ord(b'u'):
+        elif ch == self.ord_u:
             self.move_y(-(self.height // 2))
-        elif ch == ord(b'f'):
+        elif ch == self.ord_f:
             self.move_y(self.height)
-        elif ch == ord(b'b'):
+        elif ch == self.ord_b:
             self.move_y(-self.height)
-        elif ch == ord(b'g'):
+        elif ch == self.ord_g:
             self.set_y(0)
-        elif ch == ord(b'G'):
+        elif ch == self.ord_G:
             self.set_y(self.content.get_size())
+        elif ch in (self.ord_r, curses.KEY_REFRESH, curses.KEY_RESIZE):
+            return self.ord_r
         else:
-            self.debug_log.append('ch=%d' % ch)
+            return ch
+        return None
     
-    def _clip_y(self):
-        c = self.content
-        margin = min(self.margin_height, c.get_cursor(), c.get_size() - 1 - c.get_cursor())
-        if self.y > self.height - self.status_height - margin - 1:
-            self.y = self.height - self.status_height - margin - 1
+    def _clip_set_y(self, y):
+        self.y = y
+        cs = self.content.get_size()
+        cc = self.content.get_cursor()
+        if self.y >= cs - 1:
+            self.y = cs - 1
+        margin = min(self.margin_height, cc, max(cs - 1 - cc, 0))
+        if self.y > self.body_height - margin - 1:
+            self.y = self.body_height - margin - 1
         if self.y < margin:
             self.y = margin
 
     def move_y(self, delta):
-        c = self.content
-        c.move_cursor(delta)
-        self.y += delta
-        self._clip_y()
+        self.content.move_cursor(delta)
+        self._clip_set_y(self.y + delta)
     
     def set_y(self, y):
         self.content.set_cursor(y)
-        self.y = y
-        self._clip_y()
+        self._clip_set_y(y)
 
-    def refresh(self):
-        self.height, self.width = self.win.getmaxyx()
-        self.margin_height = self.height // 4
+    def update_for_screen(self, scr):
+        self.height, self.width = scr.getmaxyx()
+        self.margin_height = self.height // 5
+        self.body_height = self.height - self.footer_height
 
-        y, x = curses.getsyx()
-        assert y >= 0
-        self.y = y
-        self.x = x
+        y, self.x = curses.getsyx()
+        self._clip_set_y(y)
 
-        self.pad_width = self.width * 2
-        self.pad = curses.newpad(self.height, self.pad_width)
+        pad = curses.newpad(self.height, self.width * 2)
+        return pad
 
-    def render(self):
-        pad = self.pad
-        pad_width = self.pad_width
+    def render(self, pad):
         pad.erase()
-        for y in range(0, self.height - self.status_height - 1 + 1):
+
+        pad_width = pad.getmaxyx()[1]
+        for y in range(0, self.body_height):
             l = self.content.get_line(y - self.y)
             pad.addnstr(y, 0, l, pad_width)
             pad.clrtoeol()
-        pad.addstr(self.height - self.status_height, 0, b'[%d / %d]' %
-                   (self.content.get_cursor() + 1, self.content.get_size()), curses.A_REVERSE)
+
+        c = self.content
+        pad.addstr(self.body_height, 0, b'[%d / %d]' %
+                   (c.get_cursor() + 1, c.get_size()), curses.A_REVERSE)
         pad.clrtoeol()
 
 
