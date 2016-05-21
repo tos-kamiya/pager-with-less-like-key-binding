@@ -122,9 +122,7 @@ class Pager:
         self._clip_y()
     
     def set_y(self, y):
-        c = self.content
-        c.set_cursor(y)
-        margin = min(self.margin_height, c.get_cursor(), c.get_size() - 1 - c.get_cursor())
+        self.content.set_cursor(y)
         self.y = y
         self._clip_y()
 
