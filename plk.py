@@ -52,11 +52,17 @@ class Pager:
         self.x = 0  # position of cursor in screen
         self.debug_log = []  # for debug
 
-        # setup constants for keycode (ord_a ... ord_z, ord_A ... ord_Z)
-        for c in string.ascii_lowercase:
-            setattr(Pager, 'ord_' + c, ord(c))
-        for c in string.ascii_uppercase:
-            setattr(Pager, 'ord_' + c, ord(c))
+        self.key_handler = kh = {}
+        kh[ord(b'e')] = kh[ord(b'j')] = kh[curses.KEY_DOWN] = lambda: self.move_y(+1)
+        kh[ord(b'y')] = kh[ord(b'k')] = kh[curses.KEY_UP] = lambda: self.move_y(-1)
+        kh[ord(b'd')] = lambda: self.move_y(self.body_height // 2)
+        kh[ord(b'u')] = lambda: self.move_y(-(self.body_height // 2))
+        kh[ord(b'f')] = lambda: self.move_y(self.body_height)
+        kh[ord(b'b')] = lambda: self.move_y(-self.body_height)
+        kh[ord(b'G')] = lambda: self.set_y(self.content.get_size())
+        kh[ord(b'g')] = lambda: self.set_y(0)
+        kh[ord(b'r')] = kh[curses.KEY_REFRESH] = kh[curses.KEY_RESIZE] = lambda: 'refresh'
+        kh[ord(b'q')] = lambda: 'quit'
 
     def curses_main(self, stdscr):
         stdscr.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
@@ -64,50 +70,25 @@ class Pager:
 
         pad = self.prepare_for_screen(stdscr)
         self.content.set_cursor(self.y)
-        
-        while True:
+
+        unknown_key_func = lambda: self.debug_log.append('ch=%d' % ch)
+
+        request = None
+        while request != 'quit':
             # update screen
+            if request == 'refresh':
+                pad = self.prepare_for_screen(stdscr)
             self.render(pad)
             pad.overwrite(stdscr)
             stdscr.move(self.y, self.x)
 
             # wait key input
             ch = stdscr.getch()
-            
-            # undate state
-            ch = self.dispatch(ch)
-            if ch is None:
-                pass
-            elif ch == self.ord_q:
-                return
-            elif ch == self.ord_r:
-                pad = self.prepare_for_screen(stdscr)
-            else:
-                self.debug_log.append('ch=%d' % ch)
 
-    def dispatch(self, ch):
-        if ch in (self.ord_e, self.ord_j, curses.KEY_DOWN):
-            self.move_y(+1)
-        elif ch in (self.ord_y, self.ord_k, curses.KEY_UP):
-            self.move_y(-1)
-        elif ch == self.ord_d:
-            self.move_y(self.body_height // 2)
-        elif ch == self.ord_u:
-            self.move_y(-(self.body_height // 2))
-        elif ch == self.ord_f:
-            self.move_y(self.body_height)
-        elif ch == self.ord_b:
-            self.move_y(-self.body_height)
-        elif ch == self.ord_g:
-            self.set_y(0)
-        elif ch == self.ord_G:
-            self.set_y(self.content.get_size())
-        elif ch in (self.ord_r, curses.KEY_REFRESH, curses.KEY_RESIZE):
-            return self.ord_r
-        else:
-            return ch
-        return None
-    
+            # undate state
+            func = self.key_handler.get(ch, unknown_key_func)
+            request = func()
+
     def _clip_set_y(self, y):
         cs = self.content.get_size()
         cc = self.content.get_cursor()
