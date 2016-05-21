@@ -34,7 +34,7 @@ class ContentView:
     
     def get_line(self, offset=0):
         li = self.cursor + offset
-        if 0 <= li and li < len(self.lines):
+        if 0 <= li < len(self.lines):
             return self.lines[li]
         else:
             return b'~'
@@ -62,23 +62,26 @@ class Pager:
         stdscr.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
         stdscr.move(0, 0)
 
-        pad = self.update_for_screen(stdscr)
+        pad = self.prepare_for_screen(stdscr)
         self.content.set_cursor(self.y)
         
         while True:
+            # update screen
             self.render(pad)
             pad.overwrite(stdscr)
             stdscr.move(self.y, self.x)
 
+            # wait key input
             ch = stdscr.getch()
-
+            
+            # undate state
             ch = self.dispatch(ch)
             if ch is None:
                 pass
             elif ch == self.ord_q:
-                break  # while True
+                return
             elif ch == self.ord_r:
-                pad = self.update_for_screen(stdscr)
+                pad = self.prepare_for_screen(stdscr)
             else:
                 self.debug_log.append('ch=%d' % ch)
 
@@ -122,7 +125,7 @@ class Pager:
         self.content.set_cursor(y)
         self._clip_set_y(y)
 
-    def update_for_screen(self, scr):
+    def prepare_for_screen(self, scr):
         self.height, self.width = scr.getmaxyx()
         self.body_height = max(0, self.height - self.footer_height)
         self.margin_height = self.body_height // 5
@@ -143,7 +146,7 @@ class Pager:
             pad.clrtoeol()
 
         c = self.content
-        pad.addstr(self.body_height, 0, b'[%d / %d]' %
+        pad.addstr(self.body_height, 0, b' [%d / %d] ' %
                    (c.get_cursor() + 1, c.get_size()), curses.A_REVERSE)
         pad.clrtoeol()
 
