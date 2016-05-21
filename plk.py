@@ -123,7 +123,7 @@ class Pager:
 
 
 def main(argv):
-    __doc__ = """A pageer with less-like key bindings.
+    __doc__ = """A pager with less-like key bindings.
 
 Usage: {argv0} <input>
 """.format(argv0=argv[0])
