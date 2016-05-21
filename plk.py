@@ -33,8 +33,8 @@ class ContentView:
     def move_cursor(self, delta):
         self.cursor = self._get_clipped_index(self.cursor + delta)
     
-    def get_line(self, y):
-        li = self.cursor + y
+    def get_line(self, offset=0):
+        li = self.cursor + offset
         if 0 <= li and li < len(self.lines):
             return self.lines[li]
         else:
@@ -48,18 +48,22 @@ class Pager:
         self.x = 0  # position of cursor in screen
         self.height = None
         self.width = None
+        self.margin_height = None
+        self.status_height = 1
         self.pad_width = None
         self.pad = None
         self.debug_log = []  # for debug
         self.content = content
-    
+
     def curses_main(self, stdscr):
         self.win = win = stdscr
         win.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
         win.nodelay(True)  # capture arrow keys
 
         self.height, self.width = win.getmaxyx()
-        self.y = 0
+        self.margin_height = self.height // 4
+
+        self.y = self.margin_height
         self.x = 0
 
         self.content.set_cursor(self.y)
@@ -97,15 +101,19 @@ class Pager:
                 self.debug_log.append('ch=%d' % ch)
     
     def move_y(self, delta):
-        self.content.move_cursor(delta)
+        c = self.content
+        c.move_cursor(delta)
+        margin = min(self.margin_height, c.get_cursor(), c.get_size() - 1 - c.get_cursor())
         self.y += delta
-        if self.y > self.height - 2:
-            self.y = self.height - 2
-        if self.y < 0:
-            self.y = 0
+        if self.y > self.height - self.status_height - margin - 1:
+            self.y = self.height - self.status_height - margin - 1
+        if self.y < margin:
+            self.y = margin
 
     def refresh(self):
         self.height, self.width = self.win.getmaxyx()
+        self.margin_height = self.height // 4
+
         y, x = curses.getsyx()
         assert y >= 0
         self.y = y
