@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# This file is distributed under Public Domain.
+# Hosted at https://github.com/tos-kamiya/pager-with-less-like-key-binding .
+
 import sys
 import time
 import string
@@ -50,6 +53,7 @@ class Pager:
         self.x = 0  # position of cursor in screen
         self.debug_log = []  # for debug
 
+        # setup constants for keycode (ord_a ... ord_z, ord_A ... ord_Z)
         for c in string.ascii_lowercase:
             setattr(Pager, 'ord_' + c, ord(c))
         for c in string.ascii_uppercase:
