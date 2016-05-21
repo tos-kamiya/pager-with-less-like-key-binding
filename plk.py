@@ -5,7 +5,6 @@
 # Hosted at https://github.com/tos-kamiya/pager-with-less-like-key-binding .
 
 import sys
-import time
 import string
 import traceback
 import curses
@@ -61,7 +60,6 @@ class Pager:
 
     def curses_main(self, stdscr):
         stdscr.scrollok(False)  # explicitly control scrolling. should not be controlled by curses
-        stdscr.nodelay(True)  # capture arrow keys
         stdscr.move(0, 0)
 
         pad = self.update_for_screen(stdscr)
@@ -72,10 +70,7 @@ class Pager:
             pad.overwrite(stdscr)
             stdscr.move(self.y, self.x)
 
-            ch = -1
-            while ch == -1:
-                time.sleep(0.005)
-                ch = stdscr.getch()
+            ch = stdscr.getch()
 
             ch = self.dispatch(ch)
             if ch is None:
