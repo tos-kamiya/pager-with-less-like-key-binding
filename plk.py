@@ -2,8 +2,9 @@
 # coding: utf-8
 
 import sys
-import curses
+import time
 import traceback
+import curses
 
 
 class ContentView:
@@ -69,6 +70,7 @@ class Pager:
             self.render()
             self.pad.overwrite(win)
             win.move(self.y, self.x)
+            time.sleep(0.005)
 
             ch = win.getch()
             if ch == -1:
