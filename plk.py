@@ -76,9 +76,9 @@ class Pager:
             elif ch in (ord(b'r'), curses.KEY_REFRESH):
                 self.refresh()
             elif ch in (ord(b'e'), ord(b'j'), curses.KEY_DOWN):
-                self.move_y(-1)
-            elif ch in (ord(b'y'), ord(b'k'), curses.KEY_UP):
                 self.move_y(+1)
+            elif ch in (ord(b'y'), ord(b'k'), curses.KEY_UP):
+                self.move_y(-1)
             elif ch == ord(b'd'):
                 self.move_y(self.height // 2)
             elif ch == ord(b'u'):
