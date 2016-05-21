@@ -148,6 +148,20 @@ class Pager:
         pad.clrtoeol()
 
 
+def wrapper(curses_main):
+    stdscr = curses.initscr()
+    try:
+        curses.noecho()
+        curses.cbreak()
+        stdscr.keypad(1)
+        return curses_main(stdscr)
+    finally:
+        stdscr.keypad(0)
+        curses.echo()
+        curses.nocbreak()
+        curses.endwin()
+
+
 def main(argv):
     __doc__ = """A pager with less-like key bindings.
 
@@ -177,7 +191,7 @@ Usage: {argv0} <input>
     cnt = ContentView(lines)
     pgr = Pager(cnt)
     try:
-        curses.wrapper(pgr.curses_main)
+        wrapper(pgr.curses_main)
     except:
         sys.stderr.write(traceback.format_exc())
     finally:
