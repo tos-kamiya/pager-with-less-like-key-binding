@@ -70,7 +70,7 @@ class Pager:
         pad = self.prepare_for_screen(stdscr)
         self.content_csr.set_pos(self.y)
 
-        unknown_key_func = lambda: self.debug_log.append('ch=%d' % ch)
+        unknown_key_func = lambda ch: self.debug_log.append('ch=%d' % ch)
 
         request = None
         while request != 'quit':
