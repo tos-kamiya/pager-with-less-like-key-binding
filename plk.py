@@ -45,6 +45,7 @@ class Pager:
         self.y = self.x = 0  # position of screen cursor
         self.debug_log = []  # for debug
 
+        self.unknown_key_func = lambda ch: self.debug_log.append('ch=%d' % ch)
         self.key_handler = kh = {}
         kh[ord(b'e')] = kh[ord(b'j')] = kh[curses.KEY_DOWN] = lambda ch: self.move_cursor(+1)
         kh[ord(b'y')] = kh[ord(b'k')] = kh[curses.KEY_UP] = lambda ch: self.move_cursor(-1)
@@ -70,8 +71,6 @@ class Pager:
         pad = self.prepare_for_screen(stdscr)
         self.content_csr.set_pos(self.y)
 
-        unknown_key_func = lambda ch: self.debug_log.append('ch=%d' % ch)
-
         request = None
         while request != 'quit':
             # update screen
@@ -86,7 +85,7 @@ class Pager:
             ch = stdscr.getch()
 
             # undate state
-            func = self.key_handler.get(ch, unknown_key_func)
+            func = self.key_handler.get(ch, self.unknown_key_func)
             request = func(ch)
 
     def _set_y(self, y):
