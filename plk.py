@@ -79,7 +79,8 @@ class Pager:
             if request == 'refresh':
                 pad = self.prepare_for_screen(stdscr)
             self.render(pad)
-            pad.overwrite(stdscr)
+            pad.overwrite(stdscr, 0, 0, 0, 0, self.height - 1, self.width - 1 - 1)  
+                    # walkaround: width -1 to prevent a wide char at eol being drawn in head of next line
             stdscr.move(self.y, self.x)
 
             # wait key input
