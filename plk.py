@@ -122,18 +122,13 @@ class Pager:
         pad_width = pad.getmaxyx()[1]
         for y in range(0, self.body_height):
             ci = cc.to_index(y - self.y)
-            pad.addnstr(y, 0, self.render_line(ci), pad_width)
+            line = self.content[ci] if ci is not None else b'~'
+            pad.addnstr(y, 0, line, pad_width)
             pad.clrtoeol()
 
         status_line = b' [%d / %d] ' % (cc.pos + 1, cc.size)
         pad.addstr(self.body_height, 0, status_line, curses.A_REVERSE)
         pad.clrtoeol()
-
-    def render_line(self, content_index):
-        if content_index is not None:
-            return self.content[content_index]
-        else:
-            return b'~'
 
 
 def wrapper(curses_main):  # same as curses.wrapper, except for not setting up color pallet
