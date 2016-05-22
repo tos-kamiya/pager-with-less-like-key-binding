@@ -10,39 +10,34 @@ import traceback
 import curses
 
 
-class ContentView:
-    def __init__(self, lines, tabsize=4):
-        self.tabsize = tabsize
-        tabstr = b' ' * self.tabsize
-        self.lines = [L.replace(b'\t', tabstr) for L in lines]
-        self.cursor = 0  # position of cursor in text (goes 0 to len(line))
+class ContentCursor:
+    def __init__(self, size):
+        self._pos = 0  # 0 <= _pos < size
+        self._size = size
 
-    def _clip_set_cursor(self, index):
-        self.cursor = min(max(0, index), len(self.lines) - 1)
+    def _get_pos(self):
+        return self._pos
+    pos = property(_get_pos)
 
-    def get_cursor(self):
-        return self.cursor
+    def set_pos(self, pos):
+        self._pos = max(0, min(pos, self._size - 1))
 
-    def get_size(self):
-        return len(self.lines)
+    def _get_size(self):
+        return self._size
+    size = property(_get_size)
 
-    def set_cursor(self, index):
-        self._clip_set_cursor(index)
-
-    def move_cursor(self, delta):
-        self._clip_set_cursor(self.cursor + delta)
-    
-    def get_line(self, offset=0):
-        li = self.cursor + offset
-        if 0 <= li < len(self.lines):
-            return self.lines[li]
+    def to_index(self, offset=0):
+        idx = self._pos + offset
+        if 0 <= idx < self._size:
+            return idx
         else:
-            return b'~'
+            return None  # out of range
 
 
 class Pager:
-    def __init__(self, content):
-        self.content = content
+    def __init__(self):
+        self.content = None
+        self.concur = None
         self.height = None  # screen size
         self.width = None  # screen size
         self.body_height = None  # body_height + footer_height = height
@@ -59,17 +54,23 @@ class Pager:
         kh[ord(b'u')] = lambda: self.move_y(-(self.body_height // 2))
         kh[ord(b'f')] = lambda: self.move_y(self.body_height)
         kh[ord(b'b')] = lambda: self.move_y(-self.body_height)
-        kh[ord(b'G')] = lambda: self.set_y(self.content.get_size())
+        kh[ord(b'G')] = lambda: self.set_y(self.concur.size)
         kh[ord(b'g')] = lambda: self.set_y(0)
         kh[ord(b'r')] = kh[curses.KEY_REFRESH] = kh[curses.KEY_RESIZE] = lambda: 'refresh'
         kh[ord(b'q')] = lambda: 'quit'
+
+    def set_content(self, content):
+        self.content = content
+        self.concur = ContentCursor(len(self.content))
+        if self.height is not None:  # screen is already set up?
+            self._clip_set_y(self.y)
 
     def curses_main(self, stdscr):
         stdscr.scrollok(False)  # take control of scroll
         stdscr.move(0, 0)
 
         pad = self.prepare_for_screen(stdscr)
-        self.content.set_cursor(self.y)
+        self.concur.set_pos(self.y)
 
         unknown_key_func = lambda: self.debug_log.append('ch=%d' % ch)
 
@@ -79,8 +80,8 @@ class Pager:
             if request == 'refresh':
                 pad = self.prepare_for_screen(stdscr)
             self.render(pad)
-            pad.overwrite(stdscr, 0, 0, 0, 0, self.height - 1, self.width - 1 - 1)  
-                    # walkaround: width -1 to prevent a wide char at eol being drawn in head of next line
+            pad.overwrite(stdscr, 0, 0, 0, 0, self.height - 1, self.width - 1 - 1)
+                    # workaround: width -1 to prevent a wide char at eol from being drawn in head of next line
             stdscr.move(self.y, self.x)
 
             # wait key input
@@ -91,20 +92,19 @@ class Pager:
             request = func()
 
     def _clip_set_y(self, y):
-        cs = self.content.get_size()
-        cc = self.content.get_cursor()
-        y = min(y, cs - 1)
-        margin = max(0, min(self.margin_height, cc, cs - 1 - cc))
+        cc = self.concur
+        y = min(y, cc.size - 1)
+        margin = max(0, min(self.margin_height, cc.pos, cc.size - 1 - cc.pos))
         y = min(y, self.body_height - margin - 1)
         y = max(y, margin)
         self.y = y
 
     def move_y(self, delta):
-        self.content.move_cursor(delta)
+        self.concur.set_pos(self.concur.pos + delta)
         self._clip_set_y(self.y + delta)
     
     def set_y(self, y):
-        self.content.set_cursor(y)
+        self.concur.set_pos(y)
         self._clip_set_y(y)
 
     def prepare_for_screen(self, scr):
@@ -119,17 +119,19 @@ class Pager:
         return pad
 
     def render(self, pad):
+        cc = self.concur
+
         pad.erase()
 
         pad_width = pad.getmaxyx()[1]
         for y in range(self.body_height):
-            l = self.content.get_line(y - self.y)
-            pad.addnstr(y, 0, l, pad_width)
+            li = cc.to_index(y - self.y)
+            text = self.content[li] if li is not None else b'~'
+            pad.addnstr(y, 0, text, pad_width)
             pad.clrtoeol()
 
-        c = self.content
         pad.addstr(self.body_height, 0, b' [%d / %d] ' %
-                   (c.get_cursor() + 1, c.get_size()), curses.A_REVERSE)
+                   (cc.pos + 1, cc.size), curses.A_REVERSE)
         pad.clrtoeol()
 
 
@@ -173,8 +175,8 @@ Usage: {argv0} <input>
     with open(input_file, 'rb') as inp:
         lines = inp.readlines()
 
-    cnt = ContentView(lines)
-    pgr = Pager(cnt)
+    pgr = Pager()
+    pgr.set_content(lines)
     try:
         wrapper(pgr.curses_main)
     except:
