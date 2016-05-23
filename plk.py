@@ -32,6 +32,7 @@ class Pager:
         self.content_csr = None  # Index
         self.screen_size = None  # (height, width)
         self.screen_csr = None  # Index
+        self.pad = None  # off-screen buffer
         self.body_height = None  # body_height + footer_height = screen_size[0]
         self.footer_height = 1
         self.margin_height = 0  # margin_height < body_height
@@ -50,28 +51,17 @@ class Pager:
         kh[ord(b'r')] = kh[curses.KEY_REFRESH] = kh[curses.KEY_RESIZE] = lambda ch: 'refresh'
         kh[ord(b'q')] = lambda ch: 'quit'
 
-    def set_content(self, content):
-        self.content = content
-        self.content_csr = Index(len(self.content))
-        if self.screen_csr is not None:
-            self._clip_csr()
-
     def curses_main(self, stdscr):
         stdscr.scrollok(False)  # take control of scroll
         stdscr.move(0, 0)
-
-        pad = self.prepare_for_screen(stdscr)
-        self.content_csr.set_pos(self.screen_csr.pos)
+        self.set_screen(stdscr)
 
         request = None
         while request != 'quit':
             # update screen
             if request == 'refresh':
-                pad = self.prepare_for_screen(stdscr)
-            self.render(pad)
-            pad.overwrite(stdscr, 0, 0, 0, 0, self.screen_size[0] - 1, self.screen_size[1] - 1 - 1)
-                    # workaround: width -1 to prevent a wide char at eol from being drawn in head of next line
-            stdscr.move(self.screen_csr.pos, 0)
+                self.set_screen(stdscr)
+            self.draw(stdscr)
 
             # wait key input
             ch = stdscr.getch()
@@ -80,7 +70,27 @@ class Pager:
             func = self.key_handler.get(ch, self.unknown_key_func)
             request = func(ch)
 
+    def set_content(self, content):
+        self.content = content
+        self.content_csr = Index(len(self.content))
+        if self.screen_csr:
+            self.screen_csr.set_pos(self.content_csr.pos)
+            self._clip_csr()
+
+    def set_screen(self, scr):
+        height, width = self.screen_size = scr.getmaxyx()
+        self.pad = curses.newpad(height, width * 2)
+
+        self.body_height = max(0, height - self.footer_height)
+        self.margin_height = self.body_height // 5
+
+        self.screen_csr = Index(height)
+        self.screen_csr.set_pos(curses.getsyx()[0])
+        self._clip_csr()
+
     def _clip_csr(self):
+        if self.screen_csr is None or self.content_csr is None:
+            return
         cc = self.content_csr
         pos = max(0, min(self.screen_csr.pos, cc.size - 1))
         margin = max(0, min(self.margin_height, cc.pos, cc.size - 1 - cc.pos))
@@ -96,21 +106,15 @@ class Pager:
         self.screen_csr.set_pos(pos)
         self._clip_csr()
 
-    def prepare_for_screen(self, scr):
-        height, width = self.screen_size = scr.getmaxyx()
-        self.body_height = max(0, height - self.footer_height)
-        self.margin_height = self.body_height // 5
+    def draw(self, screen):
+        self.render()
+        self.pad.overwrite(screen, 0, 0, 0, 0, self.screen_size[0] - 1, self.screen_size[1] - 1 - 1)
+        # workaround: width -1 to prevent a wide char at eol from being drawn in head of next line
+        screen.move(self.screen_csr.pos, 0)
 
-        self.screen_csr = Index(height)
-        y = curses.getsyx()[0]
-        self.screen_csr.set_pos(y)
-        self._clip_csr()
-
-        pad = curses.newpad(height, width * 2)
-        return pad
-
-    def render(self, pad):
+    def render(self):
         cc = self.content_csr
+        pad = self.pad
 
         pad.erase()
 
@@ -128,13 +132,13 @@ class Pager:
         pad.clrtoeol()
 
 
-def wrapper(curses_main):  # same as curses.wrapper, except for not setting up color pallet
+def wrapper(curses_main, *args):  # same as curses.wrapper, except for not setting up color pallet
     stdscr = curses.initscr()
     try:
         curses.noecho()
         curses.cbreak()
         stdscr.keypad(1)
-        return curses_main(stdscr)
+        return curses_main(stdscr, *args)
     finally:
         stdscr.keypad(0)
         curses.echo()
