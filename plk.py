@@ -39,14 +39,14 @@ class Pager:
 
         self.unknown_key_func = lambda ch: self.debug_log.append('ch=%d' % ch)
         self.key_handler = kh = {}
-        kh[ord(b'e')] = kh[ord(b'j')] = kh[curses.KEY_DOWN] = lambda ch: self.move_cursor(+1)
-        kh[ord(b'y')] = kh[ord(b'k')] = kh[curses.KEY_UP] = lambda ch: self.move_cursor(-1)
-        kh[ord(b'd')] = lambda ch: self.move_cursor(self.body_height // 2)
-        kh[ord(b'u')] = lambda ch: self.move_cursor(-(self.body_height // 2))
-        kh[ord(b'f')] = lambda ch: self.move_cursor(self.body_height)
-        kh[ord(b'b')] = lambda ch: self.move_cursor(-self.body_height)
-        kh[ord(b'G')] = lambda ch: self.set_cursor(self.content_csr.size)
-        kh[ord(b'g')] = lambda ch: self.set_cursor(0)
+        kh[ord(b'e')] = kh[ord(b'j')] = kh[curses.KEY_DOWN] = lambda ch: self.move_csr(+1)
+        kh[ord(b'y')] = kh[ord(b'k')] = kh[curses.KEY_UP] = lambda ch: self.move_csr(-1)
+        kh[ord(b'd')] = lambda ch: self.move_csr(self.body_height // 2)
+        kh[ord(b'u')] = lambda ch: self.move_csr(-(self.body_height // 2))
+        kh[ord(b'f')] = lambda ch: self.move_csr(self.body_height)
+        kh[ord(b'b')] = lambda ch: self.move_csr(-self.body_height)
+        kh[ord(b'G')] = lambda ch: self.set_csr(self.content_csr.size)
+        kh[ord(b'g')] = lambda ch: self.set_csr(0)
         kh[ord(b'r')] = kh[curses.KEY_REFRESH] = kh[curses.KEY_RESIZE] = lambda ch: 'refresh'
         kh[ord(b'q')] = lambda ch: 'quit'
 
@@ -54,7 +54,7 @@ class Pager:
         self.content = content
         self.content_csr = Index(len(self.content))
         if self.screen_csr is not None:
-            self.clip_screen_csr()
+            self._clip_csr()
 
     def curses_main(self, stdscr):
         stdscr.scrollok(False)  # take control of scroll
@@ -80,21 +80,21 @@ class Pager:
             func = self.key_handler.get(ch, self.unknown_key_func)
             request = func(ch)
 
-    def clip_screen_csr(self):
+    def _clip_csr(self):
         cc = self.content_csr
         pos = max(0, min(self.screen_csr.pos, cc.size - 1))
         margin = max(0, min(self.margin_height, cc.pos, cc.size - 1 - cc.pos))
         self.screen_csr.set_pos(max(margin, min(pos, self.body_height - margin - 1)))
 
-    def move_cursor(self, delta):
+    def move_csr(self, delta):
         self.content_csr.set_pos(self.content_csr.pos + delta)
         self.screen_csr.set_pos(self.screen_csr.pos + delta)
-        self.clip_screen_csr()
+        self._clip_csr()
     
-    def set_cursor(self, pos):
+    def set_csr(self, pos):
         self.content_csr.set_pos(pos)
         self.screen_csr.set_pos(pos)
-        self.clip_screen_csr()
+        self._clip_csr()
 
     def prepare_for_screen(self, scr):
         height, width = self.screen_size = scr.getmaxyx()
@@ -104,7 +104,7 @@ class Pager:
         self.screen_csr = Index(height)
         y = curses.getsyx()[0]
         self.screen_csr.set_pos(y)
-        self.clip_screen_csr()
+        self._clip_csr()
 
         pad = curses.newpad(height, width * 2)
         return pad
