@@ -117,8 +117,10 @@ class Pager:
         pad_width = pad.getmaxyx()[1]
         for y in range(0, self.body_height):
             ci = cc.pos + (y - self.screen_csr.pos)
-            line = self.content[ci] if 0 <= ci < cc.size else b'~'
-            pad.addnstr(y, 0, line, pad_width)
+            if 0 <= ci < cc.size:
+                pad.addnstr(y, 0, self.content[ci], pad_width)
+            else:
+                pad.addstr(y, 0, b'~', curses.A_DIM)
             pad.clrtoeol()
 
         status_line = b' [%d / %d] ' % (cc.pos + 1, cc.size)
