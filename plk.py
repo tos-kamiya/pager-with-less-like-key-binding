@@ -119,12 +119,11 @@ class Pager:
         self._clip_csr()
 
     def draw(self):
-        self.render()
-        self.pad.overwrite(self.scr, 0, 0, 0, 0, self.screen_size[0] - 1, self.screen_size[1] - 1 - 1)
-        # workaround: width -1 to prevent a wide char at eol from being drawn in head of next line
+        self.draw_text_area()
+        self.draw_scroll_bar()
         self.scr.move(self.screen_csr.pos, 0)
 
-    def render(self):
+    def draw_text_area(self):
         cc = self.content_csr
         pad = self.pad
 
@@ -151,17 +150,31 @@ class Pager:
         pad.addstr(self.body_height, 0, status_line, curses.A_REVERSE)
         pad.clrtoeol()
 
+        pad.overwrite(self.scr, 0, 0, 0, 0, self.screen_size[0] - 1, 
+                self.screen_size[1] - 1 - 1)
+                # workaround width - 1 to avoid wide char at eol going head of next line
+
     def render_line_w_search_highlighting(self, y, ci):
         ss = self.search_state
-        pad = self.pad
-        pad_width = pad.getmaxyx()[1]
+        pad_width = self.pad.getmaxyx()[1]
         text = self.content[ci]
         lw = len(ss.word)
-        pad.addnstr(y, 0, text[:ss.col], pad_width)
+        self.pad.addnstr(y, 0, text[:ss.col], pad_width)
         if ss.col < pad_width:
-            pad.addnstr(text[ss.col:ss.col + lw], pad_width - ss.col, curses.A_REVERSE)
+            self.pad.addnstr(text[ss.col:ss.col + lw], pad_width - ss.col, curses.A_REVERSE)
             if ss.col + lw < pad_width:
-                pad.addnstr(text[ss.col + lw:], pad_width - (ss.col + lw))
+                self.pad.addnstr(text[ss.col + lw:], pad_width - (ss.col + lw))
+
+    def draw_scroll_bar(self):
+        cc = self.content_csr
+        w = self.screen_size[1] - 1
+        y_begin = (cc.pos - self.screen_csr.pos) * self.body_height // cc.size
+        y_end = (cc.pos + self.body_height - self.screen_csr.pos) * self.body_height // cc.size
+        for y in range(0, self.body_height):
+            if y == y_begin or y_begin <= y < y_end:
+                self.scr.addstr(y, w, b' ', curses.A_REVERSE | curses.A_DIM)
+            else:
+                self.scr.addstr(y, w, b' ')
 
     def input_param(self, prompt):
         self.scr.addstr(self.body_height, 0, b'%s' % prompt)
@@ -257,6 +270,7 @@ Usage: {argv0} <input>
 
     pgr = Pager()
     pgr.set_content(lines)
+    pgr.message = b' %s ' % (input_file if sys.version_info[0] < 3 else input_file.encode('utf-8'))
     try:
         wrapper(pgr.curses_main)
     except:
