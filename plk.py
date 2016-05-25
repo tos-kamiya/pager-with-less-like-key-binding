@@ -134,7 +134,11 @@ class Pager:
         for y in range(0, self.body_height):
             ci = cc.pos + (y - self.screen_csr.pos)
             if 0 <= ci < cc.size:
-                pad.addnstr(y, 0, self.content[ci], pad_width)
+                ss = self.search_state
+                if ss and ss.col != -1 and ss.row == ci:
+                    self.render_line_w_search_highlighting(y, ci)
+                else:
+                    pad.addnstr(y, 0, self.content[ci], pad_width)
             else:
                 pad.addstr(y, 0, b'~', curses.A_DIM)
             pad.clrtoeol()
@@ -146,6 +150,18 @@ class Pager:
             status_line = b' [%d / %d] ' % (cc.pos + 1, cc.size)
         pad.addstr(self.body_height, 0, status_line, curses.A_REVERSE)
         pad.clrtoeol()
+
+    def render_line_w_search_highlighting(self, y, ci):
+        ss = self.search_state
+        pad = self.pad
+        pad_width = pad.getmaxyx()[1]
+        text = self.content[ci]
+        lw = len(ss.word)
+        pad.addnstr(y, 0, text[:ss.col], pad_width)
+        if ss.col < pad_width:
+            pad.addnstr(y, ss.col, text[ss.col:ss.col + lw], pad_width, curses.A_REVERSE)
+            if ss.col + lw < pad_width:
+                pad.addnstr(y, ss.col + lw, text[ss.col + lw:], pad_width)
 
     def input_param(self, prompt):
         scr = self.scr
@@ -166,6 +182,8 @@ class Pager:
                 word_chs.append(b'%c' % ch)
 
     def do_search_cmd(self, ch):
+        self.search_state = None
+
         chr_ch = b'%c' % ch
         w = self.input_param(chr_ch)
         if w is None:
