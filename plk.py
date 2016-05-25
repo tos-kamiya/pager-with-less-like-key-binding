@@ -34,6 +34,15 @@ class SearchState:
         self.word = word
 
 
+def find_all(text, word):
+    poss = []
+    i = text.find(word, 0)
+    while i >= 0:
+        poss.append(i)
+        i = text.find(word, i + 1)
+    return poss
+
+
 class Pager:
     def __init__(self):
         self.content = None  # list of str
@@ -159,31 +168,24 @@ class Pager:
         lw = len(ss.word)
         pad.addnstr(y, 0, text[:ss.col], pad_width)
         if ss.col < pad_width:
-            pad.addnstr(y, ss.col, text[ss.col:ss.col + lw], pad_width, curses.A_REVERSE)
+            pad.addnstr(text[ss.col:ss.col + lw], pad_width, curses.A_REVERSE)
             if ss.col + lw < pad_width:
-                pad.addnstr(y, ss.col + lw, text[ss.col + lw:], pad_width)
+                pad.addnstr(text[ss.col + lw:], pad_width)
 
     def input_param(self, prompt):
-        scr = self.scr
-        
-        word_chs = []
-        while True:
-            scr.addstr(self.body_height, 0, b'%s%s' % (prompt, b''.join(word_chs)))
-            scr.clrtoeol()
+        self.scr.addstr(self.body_height, 0, b'%s' % prompt)
+        self.scr.clrtoeol()
 
-            ch = scr.getch()
-            if ch == curses.KEY_BACKSPACE:
-                if not word_chs:
-                    return None
-                word_chs.pop()
-            elif ch in (ord(b'\n'), curses.KEY_ENTER):
-                return b''.join(word_chs)
-            elif 0 <= ch < 0x7f:  # ascii
-                word_chs.append(b'%c' % ch)
+        curses.echo()
+        try:
+            s = self.scr.getstr(self.body_height, len(prompt), self.screen_size[1] - len(prompt) - 1)
+        finally:
+            curses.noecho()
+            
+        return s or None
 
     def do_search_cmd(self, ch):
         self.search_state = None
-
         chr_ch = b'%c' % ch
         w = self.input_param(chr_ch)
         if w is None:
