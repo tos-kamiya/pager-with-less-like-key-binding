@@ -26,16 +26,27 @@ class Index:
     size = property(_get_size)
 
 
+class SearchState:
+    def __init__(self, dir, row, col, word):
+        self.dir = dir
+        self.row = row
+        self.col = col
+        self.word = word
+
+
 class Pager:
     def __init__(self):
         self.content = None  # list of str
         self.content_csr = None  # Index
         self.screen_size = None  # (height, width)
         self.screen_csr = None  # Index
+        self.scr = None  # screen
         self.pad = None  # off-screen buffer
         self.body_height = None  # body_height + footer_height = screen_size[0]
         self.footer_height = 1
         self.margin_height = 0  # margin_height < body_height
+        self.message = None
+        self.search_state = None
         self.debug_log = []  # for debug
 
         self.unknown_key_func = lambda ch: self.debug_log.append('ch=%d' % ch)
@@ -48,23 +59,24 @@ class Pager:
         kh[ord(b'b')] = lambda ch: self.move_csr(-self.body_height)
         kh[ord(b'G')] = lambda ch: self.set_csr(self.content_csr.size)
         kh[ord(b'g')] = lambda ch: self.set_csr(0)
-        kh[ord(b'r')] = kh[curses.KEY_REFRESH] = kh[curses.KEY_RESIZE] = lambda ch: 'refresh'
+        kh[ord(b'r')] = kh[curses.KEY_REFRESH] = kh[curses.KEY_RESIZE] = lambda ch: self.set_screen(self.scr)
         kh[ord(b'q')] = lambda ch: 'quit'
+        kh[ord(b'/')] = kh[ord(b'?')] = self.do_search_cmd
+        kh[ord(b'n')] = kh[ord(b'N')] = self.do_search_next_cmd
 
     def curses_main(self, stdscr):
-        stdscr.scrollok(False)  # take control of scroll
-        stdscr.move(0, 0)
-        self.set_screen(stdscr)
+        self.scr = scr = stdscr
+        self.set_screen(scr)
+        scr.scrollok(False)  # take control of scroll
+        scr.move(0, 0)
 
         request = None
         while request != 'quit':
             # update screen
-            if request == 'refresh':
-                self.set_screen(stdscr)
-            self.draw(stdscr)
-
+            self.draw()
+            
             # wait key input
-            ch = stdscr.getch()
+            ch = scr.getch()
 
             # update state
             func = self.key_handler.get(ch, self.unknown_key_func)
@@ -106,11 +118,11 @@ class Pager:
         self.screen_csr.set_pos(pos)
         self._clip_csr()
 
-    def draw(self, screen):
+    def draw(self):
         self.render()
-        self.pad.overwrite(screen, 0, 0, 0, 0, self.screen_size[0] - 1, self.screen_size[1] - 1 - 1)
+        self.pad.overwrite(self.scr, 0, 0, 0, 0, self.screen_size[0] - 1, self.screen_size[1] - 1 - 1)
         # workaround: width -1 to prevent a wide char at eol from being drawn in head of next line
-        screen.move(self.screen_csr.pos, 0)
+        self.scr.move(self.screen_csr.pos, 0)
 
     def render(self):
         cc = self.content_csr
@@ -127,20 +139,80 @@ class Pager:
                 pad.addstr(y, 0, b'~', curses.A_DIM)
             pad.clrtoeol()
 
-        status_line = b' [%d / %d] ' % (cc.pos + 1, cc.size)
+        if self.message:
+            status_line = b' %s ' % self.message
+            self.message = None
+        else:
+            status_line = b' [%d / %d] ' % (cc.pos + 1, cc.size)
         pad.addstr(self.body_height, 0, status_line, curses.A_REVERSE)
         pad.clrtoeol()
 
+    def input_param(self, prompt):
+        scr = self.scr
+        
+        word_chs = []
+        while True:
+            scr.addstr(self.body_height, 0, b'%s%s' % (prompt, b''.join(word_chs)))
+            scr.clrtoeol()
+
+            ch = scr.getch()
+            if ch == curses.KEY_BACKSPACE:
+                if not word_chs:
+                    return None
+                word_chs.pop()
+            elif ch in (ord(b'\n'), curses.KEY_ENTER):
+                return b''.join(word_chs)
+            elif 0 <= ch < 0x7f:  # ascii
+                word_chs.append(b'%c' % ch)
+
+    def do_search_cmd(self, ch):
+        chr_ch = b'%c' % ch
+        w = self.input_param(chr_ch)
+        if w is None:
+            return  # command was cancled
+
+        ss = SearchState(1 if chr_ch == b'/' else -1, self.content_csr.pos, -1, w)
+        self.search_state = ss
+        self.do_search_next_cmd()
+
+    def do_search_next_cmd(self, ch=ord(b'n')):
+        if self.search_state is None:
+            return
+
+        ss = self.search_state
+        chr_ch = b'%c' % ch
+        if (ss.dir if chr_ch == b'n' else (-ss.dir)) < 0:
+            while ss.row >= 0:
+                start_pos = -1 if ss.col == -1 else ss.col + len(ss.word) - 1
+                ss.col = self.content[ss.row].rfind(ss.word, 0, start_pos)
+                if ss.col >= 0:
+                    self.set_csr(ss.row)
+                    return
+                ss.row -= 1
+                ss.col = -1
+            ss.row = 0
+        else:
+            while ss.row < self.content_csr.size:
+                ss.col = self.content[ss.row].find(ss.word, ss.col + 1)
+                if ss.col >= 0:
+                    self.set_csr(ss.row)
+                    return
+                ss.row += 1
+                ss.col = -1
+            ss.row = self.content_csr.size - 1
+        # not found
+        self.message = b'not found'
+
 
 def wrapper(curses_main, *args):  # same as curses.wrapper, except for not setting up color pallet
-    stdscr = curses.initscr()
+    scr = curses.initscr()
     try:
         curses.noecho()
         curses.cbreak()
-        stdscr.keypad(1)
-        return curses_main(stdscr, *args)
+        scr.keypad(1)
+        return curses_main(scr, *args)
     finally:
-        stdscr.keypad(0)
+        scr.keypad(0)
         curses.echo()
         curses.nocbreak()
         curses.endwin()
