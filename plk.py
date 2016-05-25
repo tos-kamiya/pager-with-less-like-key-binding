@@ -159,9 +159,9 @@ class Pager:
         lw = len(ss.word)
         pad.addnstr(y, 0, text[:ss.col], pad_width)
         if ss.col < pad_width:
-            pad.addnstr(text[ss.col:ss.col + lw], pad_width, curses.A_REVERSE)
+            pad.addnstr(text[ss.col:ss.col + lw], pad_width - ss.col, curses.A_REVERSE)
             if ss.col + lw < pad_width:
-                pad.addnstr(text[ss.col + lw:], pad_width)
+                pad.addnstr(text[ss.col + lw:], pad_width - (ss.col + lw))
 
     def input_param(self, prompt):
         self.scr.addstr(self.body_height, 0, b'%s' % prompt)
