@@ -34,15 +34,6 @@ class SearchState:
         self.word = word
 
 
-def find_all(text, word):
-    poss = []
-    i = text.find(word, 0)
-    while i >= 0:
-        poss.append(i)
-        i = text.find(word, i + 1)
-    return poss
-
-
 class Pager:
     def __init__(self):
         self.content = None  # list of str
