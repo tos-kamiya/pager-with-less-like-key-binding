@@ -4,9 +4,13 @@
 # This file is distributed under Public Domain.
 # Hosted at https://github.com/tos-kamiya/pager-with-less-like-key-binding .
 
+from collections import namedtuple
+import curses
 import sys
 import traceback
-import curses
+
+
+YX = namedtuple('YX', ('y', 'x'))
 
 
 class Index:
@@ -38,11 +42,12 @@ class Pager:
     def __init__(self):
         self.content = None  # list of str
         self.content_csr = None  # Index
-        self.screen_size = None  # (height, width)
+        self.screen_size = None  # YX
         self.screen_csr = None  # Index
         self.scr = None  # screen
         self.pad = None  # off-screen buffer
-        self.body_height = None  # body_height + footer_height = screen_size[0]
+        self.pad_size = None  # YX
+        self.body_height = None  # body_height + footer_height = screen_size.y
         self.footer_height = 1
         self.margin_height = 0  # margin_height < body_height
         self.message = None
@@ -72,13 +77,8 @@ class Pager:
 
         request = None
         while request != 'quit':
-            # update screen
             self.draw()
-            
-            # wait key input
-            ch = scr.getch()
-
-            # update state
+            ch = scr.getch()  # wait key input
             func = self.key_handler.get(ch, self.unknown_key_func)
             request = func(ch)
 
@@ -86,22 +86,22 @@ class Pager:
         self.content = content
         self.content_csr = Index(len(self.content))
         if self.screen_csr:
-            self.screen_csr.set_pos(self.content_csr.pos)
-            self._clip_csr()
+            self._screen_csr_set_pos(self.content_csr.pos)
 
     def set_screen(self, scr):
-        height, width = self.screen_size = scr.getmaxyx()
+        height, width = self.screen_size = YX(*scr.getmaxyx())
         self.pad = curses.newpad(height, width * 2)
+        self.pad_size = YX(*self.pad.getmaxyx())
 
         self.body_height = max(0, height - self.footer_height)
         self.margin_height = self.body_height // 5
 
         self.screen_csr = Index(height)
-        self.screen_csr.set_pos(curses.getsyx()[0])
-        self._clip_csr()
+        self._screen_csr_set_pos(curses.getsyx()[0])
 
-    def _clip_csr(self):
-        if self.screen_csr is None or self.content_csr is None:
+    def _screen_csr_set_pos(self, y):
+        self.screen_csr.set_pos(y)
+        if self.content_csr is None:
             return
         cc = self.content_csr
         pos = max(0, min(self.screen_csr.pos, cc.size - 1))
@@ -110,13 +110,11 @@ class Pager:
 
     def move_csr(self, delta):
         self.content_csr.set_pos(self.content_csr.pos + delta)
-        self.screen_csr.set_pos(self.screen_csr.pos + delta)
-        self._clip_csr()
+        self._screen_csr_set_pos(self.screen_csr.pos + delta)
     
     def set_csr(self, pos):
         self.content_csr.set_pos(pos)
-        self.screen_csr.set_pos(pos)
-        self._clip_csr()
+        self._screen_csr_set_pos(pos)
 
     def draw(self):
         self.draw_text_area()
@@ -129,18 +127,16 @@ class Pager:
 
         pad.erase()
 
-        pad_width = pad.getmaxyx()[1]
         for y in range(0, self.body_height):
             ci = cc.pos + (y - self.screen_csr.pos)
-            if 0 <= ci < cc.size:
-                ss = self.search_state
-                if ss and ss.col != -1 and ss.row == ci:
-                    self.render_line_w_search_highlighting(y, ci)
-                else:
-                    pad.addnstr(y, 0, self.content[ci], pad_width)
+            pad.move(y, 0) 
+            if self.search_state and self.render_line_w_search_state(ci):
+                pass
             else:
-                pad.addstr(y, 0, b'~', curses.A_DIM)
-            pad.clrtoeol()
+                if 0 <= ci < cc.size:
+                    pad.addnstr(self.content[ci], self.pad_size.x);
+                else:
+                    pad.addstr(b'~', curses.A_DIM)
 
         if self.message:
             status_line = b' %s ' % self.message
@@ -148,26 +144,28 @@ class Pager:
         else:
             status_line = b' [%d / %d] ' % (cc.pos + 1, cc.size)
         pad.addstr(self.body_height, 0, status_line, curses.A_REVERSE)
-        pad.clrtoeol()
 
-        pad.overwrite(self.scr, 0, 0, 0, 0, self.screen_size[0] - 1, 
-                self.screen_size[1] - 1 - 1)
+        pad.overwrite(self.scr, 0, 0, 0, 0, self.screen_size.y - 1, 
+                self.screen_size.x - 1 - 1)
                 # workaround width - 1 to avoid wide char at eol going head of next line
 
-    def render_line_w_search_highlighting(self, y, ci):
+    def render_line_w_search_state(self, ci):
         ss = self.search_state
-        pad_width = self.pad.getmaxyx()[1]
+        if ss.col < 0 or ci != ss.row:
+            return False  # the line is not drawn
+        pad_width = self.pad_size.x
         text = self.content[ci]
         lw = len(ss.word)
-        self.pad.addnstr(y, 0, text[:ss.col], pad_width)
+        self.pad.addnstr(text[:ss.col], pad_width)
         if ss.col < pad_width:
             self.pad.addnstr(text[ss.col:ss.col + lw], pad_width - ss.col, curses.A_REVERSE)
             if ss.col + lw < pad_width:
                 self.pad.addnstr(text[ss.col + lw:], pad_width - (ss.col + lw))
+        return True  # the line is drawn
 
     def draw_scroll_bar(self):
         cc = self.content_csr
-        w = self.screen_size[1] - 1
+        w = self.screen_size.x - 1
         y_begin = (cc.pos - self.screen_csr.pos) * self.body_height // cc.size
         y_end = (cc.pos + self.body_height - self.screen_csr.pos) * self.body_height // cc.size
         for y in range(0, self.body_height):
@@ -182,7 +180,7 @@ class Pager:
 
         curses.echo()
         try:
-            s = self.scr.getstr(self.body_height, len(prompt), self.screen_size[1] - len(prompt) - 1)
+            s = self.scr.getstr(self.body_height, len(prompt), self.screen_size.x - len(prompt) - 1)
         finally:
             curses.noecho()
             
@@ -195,37 +193,34 @@ class Pager:
         if w is None:
             return  # command was cancled
 
-        ss = SearchState(1 if chr_ch == b'/' else -1, self.content_csr.pos, -1, w)
-        self.search_state = ss
-        self.do_search_next_cmd()
+        self.search_state = SearchState(1 if chr_ch == b'/' else -1, self.content_csr.pos, -1, w)
+        self.do_search_next_cmd(ord(b'n'))
 
-    def do_search_next_cmd(self, ch=ord(b'n')):
+    def do_search_next_cmd(self, ch):
         if self.search_state is None:
             return
 
         ss = self.search_state
         chr_ch = b'%c' % ch
-        if (ss.dir if chr_ch == b'n' else (-ss.dir)) < 0:
+        if ss.dir * (1 if chr_ch == b'n' else -1) < 0:
+            ss.row = min(ss.row, self.content_csr.size - 1)
             while ss.row >= 0:
-                start_pos = -1 if ss.col == -1 else ss.col + len(ss.word) - 1
-                ss.col = self.content[ss.row].rfind(ss.word, 0, start_pos)
+                start_pos = len(self.content[ss.row]) if ss.col == -1 else ss.col + len(ss.word) - 1
+                ss.col = self.content[ss.row].rfind(ss.word, 0, start_pos)  # note: expect ss.col = -1 when not found
                 if ss.col >= 0:
-                    self.set_csr(ss.row)
-                    return
+                    break  # while
                 ss.row -= 1
-                ss.col = -1
-            ss.row = 0
         else:
+            ss.row = max(0, ss.row)
             while ss.row < self.content_csr.size:
-                ss.col = self.content[ss.row].find(ss.word, ss.col + 1)
+                ss.col = self.content[ss.row].find(ss.word, ss.col + 1)  # note: expect ss.col = -1 when not found
                 if ss.col >= 0:
-                    self.set_csr(ss.row)
-                    return
+                    break  # while
                 ss.row += 1
-                ss.col = -1
-            ss.row = self.content_csr.size - 1
-        # not found
-        self.message = b'not found'
+        if ss.col >= 0:  # found
+            self.set_csr(ss.row)
+        else:
+            self.message = b'not found'
 
 
 def wrapper(curses_main, *args):  # same as curses.wrapper, except for not setting up color pallet
