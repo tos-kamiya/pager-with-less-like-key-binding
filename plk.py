@@ -123,46 +123,42 @@ class Pager:
         self.scr.move(self.screen_csr.pos, 0)
 
     def draw_text_area(self):
-        cc = self.content_csr
-        pad = self.pad
-
-        pad.erase()
+        self.pad.erase()
 
         for y in range(0, self.body_height):
-            ci = cc.pos + (y - self.screen_csr.pos)
-            pad.move(y, 0) 
-            if self.search_state and self.render_line_w_search_state(ci):
-                pass
-            else:
-                if 0 <= ci < cc.size:
-                    pad.addnstr(self.content[ci], self.pad_size.x);
-                else:
-                    pad.addstr(b'~', curses.A_DIM)
+            self.render_line(y, self.content_csr.pos + (y - self.screen_csr.pos))
 
         if self.message:
             status_line = b' %s ' % self.message
             self.message = None
         else:
-            status_line = b' [%d / %d] ' % (cc.pos + 1, cc.size)
-        pad.addstr(self.body_height, 0, status_line, curses.A_REVERSE)
+            status_line = b' [%d / %d] ' % (self.content_csr.pos + 1, self.content_csr.size)
+        self.pad.addstr(self.body_height, 0, status_line, curses.A_REVERSE)
 
-        pad.overwrite(self.scr, 0, 0, 0, 0, self.screen_size.y - 1, 
+        self.pad.overwrite(self.scr, 0, 0, 0, 0, self.screen_size.y - 1, 
                 self.screen_size.x - 1 - 1)
                 # workaround width - 1 to avoid wide char at eol going head of next line
 
-    def render_line_w_search_state(self, ci):
+    def render_line(self, y, content_index):
         ss = self.search_state
-        if ss.col < 0 or ci != ss.row:
-            return False  # the line is not drawn
+        pad = self.pad
+
+        pad.move(y, 0) 
+        if ss is None or ss.col < 0 or content_index != ss.row:
+            if 0 <= content_index < self.content_csr.size:
+                pad.addnstr(self.content[content_index], self.pad_size.x);
+            else:
+                pad.addstr(b'~', curses.A_DIM)
+            return
+
         pad_width = self.pad_size.x
-        text = self.content[ci]
+        text = self.content[content_index]
         lw = len(ss.word)
-        self.pad.addnstr(text[:ss.col], pad_width)
+        pad.addnstr(text[:ss.col], pad_width)
         if ss.col < pad_width:
-            self.pad.addnstr(text[ss.col:ss.col + lw], pad_width - ss.col, curses.A_REVERSE)
+            pad.addnstr(text[ss.col:ss.col + lw], pad_width - ss.col, curses.A_REVERSE)
             if ss.col + lw < pad_width:
-                self.pad.addnstr(text[ss.col + lw:], pad_width - (ss.col + lw))
-        return True  # the line is drawn
+                pad.addnstr(text[ss.col + lw:], pad_width - (ss.col + lw))
 
     def draw_scroll_bar(self):
         cc = self.content_csr
