@@ -85,6 +85,7 @@ class Pager:
     def set_content(self, content):
         self.content = content
         self.content_csr = Index(len(self.content))
+        self.search_state = None
         if self.screen_csr:
             self._screen_csr_set_pos(self.content_csr.pos)
 
